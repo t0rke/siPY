@@ -25,40 +25,72 @@
 # print(track_dataframe.shape)
 # track_dataframe.head()
 
+from bs4 import BeautifulSoup
 import requests
-import pprint
 
-pp = pprint.PrettyPrinter(indent=4)
+def get_artist_names(url):
+    r = requests.get(url)
+    soup = BeautifulSoup(r.content, 'html.parser')
+    tags = soup.find_all('table', class_='wikitable sortable')
 
-cid = '9388b60e9dbc4a1ba26d013fcf84d951' # client ID
-secret = '85bfc336314d4fa8a808d5250b5452eb' # client secret
+    # COLLECTS most monthly followed
+    monthly = [item.text for item in tags[0].find_all('td') if (item.text != '' and '\n' not in item.text)]
+    followed = [item.text for item in tags[1].find_all('td') if (item.text != '' and '\n' not in item.text)]
+    
+    monthly_artists = monthly[::2] # most monthly listened to: artist names
+    monthly_popularity = monthly[1:][::2] # most monthly listened to: listeners in millions
 
-AUTH_URL = 'https://accounts.spotify.com/api/token'
+    followed_artists = followed[::2] # most followed: artist names
+    followed_popularity = followed[1:][::2] # most followed: artist popularity
 
-# POST
-auth_response = requests.post(AUTH_URL, {
-    'grant_type': 'client_credentials',
-    'client_id': cid,
-    'client_secret': secret,
-})
+    master = []
+    master.append(monthly_artists)
+    master.append(monthly_popularity)
+    master.append(followed_artists)
+    master.append(followed_popularity)
 
-# convert the response to JSON
-auth_response_data = auth_response.json()
+    print (master)
+    return master
 
-# save the access token
-access_token = auth_response_data['access_token']
+    # for tag in tags:
+    #     for sub in tag.find_all('td'):
+    #         print (sub)
 
-headers = {'Authorization': 'Bearer {token}'.format(token=access_token)}
+get_artist_names("https://en.wikipedia.org/wiki/List_of_most-streamed_artists_on_Spotify")
+# import requests
+# import pprint
 
-# base URL of all Spotify API endpoints
-BASE_URL = 'https://api.spotify.com/v1/'
+# pp = pprint.PrettyPrinter(indent=4)
 
-# Track ID from the URI
-track_id = '6y0igZArWVi6Iz0rj35c1Y'
+# cid = '9388b60e9dbc4a1ba26d013fcf84d951' # client ID
+# secret = '85bfc336314d4fa8a808d5250b5452eb' # client secret
 
-# actual GET request with proper header
-r = requests.get(BASE_URL + 'audio-features/' + track_id, headers=headers)
+# AUTH_URL = 'https://accounts.spotify.com/api/token'
 
-r = r.json()
+# # POST
+# auth_response = requests.post(AUTH_URL, {
+#     'grant_type': 'client_credentials',
+#     'client_id': cid,
+#     'client_secret': secret,
+# })
 
-pp.pprint(r)
+# # convert the response to JSON
+# auth_response_data = auth_response.json()
+
+# # save the access token
+# access_token = auth_response_data['access_token']
+
+# headers = {'Authorization': 'Bearer {token}'.format(token=access_token)}
+
+# # base URL of all Spotify API endpoints
+# BASE_URL = 'https://api.spotify.com/v1/'
+
+# # Track ID from the URI
+# track_id = '6y0igZArWVi6Iz0rj35c1Y'
+
+# # actual GET request with proper header
+# r = requests.get("https://api.spotify.com/v1/artists/{id}", headers=headers)
+
+# r = r.json()
+
+# pp.pprint(r)
