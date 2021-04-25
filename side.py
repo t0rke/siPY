@@ -9,6 +9,8 @@ import seaborn as sns
 
 import pandas as pd
 
+from collections import defaultdict
+
 master = 0
 
 pp = pprint.PrettyPrinter(indent=4)
@@ -43,16 +45,46 @@ def initialize_database(db_name):
 
 def create_table(cur, conn, table_name):
     cur.execute('DROP TABLE IF EXISTS ' + table_name)
-    cur.execute('CREATE TABLE ' + table_name + ' (name TEXT PRIMARY KEY, id TEXT, followers INTEGER, popularity INTEGER, genre TEXT, parent TEXT)')
+    cur.execute('CREATE TABLE IF NOT EXISTS ' + table_name + ' (name TEXT PRIMARY KEY, id TEXT, followers INTEGER, popularity INTEGER, genre TEXT, parent TEXT)')
     conn.commit()
 
 
 def append_table(cur, conn, table_name, data):
+    if len(data) == 5: # handles the root case
+        data.append(None)
     cur.execute('INSERT INTO ' + table_name + ' (name, id, followers, popularity, genre, parent) VALUES (?,?,?,?,?,?)', (data[0], data[1], data[2], data[3], data[4], data[5]))
     conn.commit()
 
-def build_url(artist_id):
-    return 'https://api.spotify.com/v1/artists/' + artist_id +'/related-artists'
+def build_url(artist_tag, mode):
+    if mode == 'id':
+        return 'https://api.spotify.com/v1/artists/' + artist_tag +'/related-artists'
+    if mode == 'name':
+        return 'https://api.spotify.com/v1/search?q=' + artist_tag.replace(' ', '?') + "&type=artist&offset=0&limit=1"
+
+
+# gets data from a singular artist URL via SPotify API
+def get_artist_data(req_url):
+    r = requests.get(req_url, headers=headers)
+    dic = r.json()
+
+    for item in dic['artists']['items']:
+        name = item['name']
+        # rtype = item['type']
+        followers = item['followers']['total']
+        genres = ','.join(item['genres'])
+        rid = item['id']
+        popularity = item['popularity']
+        return [name, rid, followers, popularity, genres]
+
+
+# Processes all of the root requests
+# returns what it appends -> a list of root artist data
+def make_append_root_requests(cur, conn, table_name, urls):
+    for url in urls:
+        data = get_artist_data(url)
+        append_table(cur, conn, table_name, data)
+
+    # [append_table(cur, conn, table_name, get_artist_data(url)) for url in urls]
 
 
 def get_related_artists(req_url, parent):
@@ -61,7 +93,7 @@ def get_related_artists(req_url, parent):
 
     recommended = []
 
-    if master > 20:
+    if master > 20: # halts if no more recomendations can be made
         return
 
     for item in dic['artists']:
@@ -77,7 +109,9 @@ def get_related_artists(req_url, parent):
 
     return recommended
 
-def generate_path(cur, conn, url, name):
+
+def generate_path(cur, conn, table_name, url, name):
+    print (">>> ENTERED GENERATE_PATH")
     # seeds from the first input
     data = get_related_artists(url, name)
 
@@ -88,42 +122,156 @@ def generate_path(cur, conn, url, name):
     # miss = 0
     # duplicate_profile = []
     run = True
-    while (run):
+    while len(discovered) < 100 and run and len(data):
         cutoff = 0
         for entry in data:
+
             if entry[0] not in discovered:
-                print(entry)
+                # print(entry)
                 # duplicate_profile.append(miss)
                 # miss = 0
                 discovered.append(entry[0])
-                next_url = build_url(entry[1])
-                append_table(cur, conn, 'path', entry)
+                next_url = build_url(entry[1], 'id')
+                append_table(cur, conn, table_name, entry)
                 data = get_related_artists(next_url, discovered[-1])
+                
                 break
             else:
                 # miss += 1
-                # print("Miss!")
                 cutoff += 1
-                if (cutoff == 20):
+                if (cutoff == len(data)):
                     run = False
+                    break
+    return len(discovered)
 
 
-
-def main():
-    # init the database
-    cur, conn = initialize_database('path.db')
-    create_table(cur, conn, 'path')
+def scrape_billboard_artists(url):
+    r = requests.get(url)
+    soup = BeautifulSoup(r.content, 'html.parser')
     
-    # start of the spidering
-    STARTIST_NAME = 'Taylor Swift'
-    STARTIST_ID = '06HL4z0CvFAxyc27GXpf02'
-    STARTIST_URL = 'https://api.spotify.com/v1/artists/' + STARTIST_ID +'/related-artists'
+    tags = soup.find_all('div', class_='chart-details')
 
-    generate_path(cur, conn, STARTIST_URL, STARTIST_NAME)
+    lst = []
+    for item in tags:
+        for sub in item.find_all('a'):
+            lst.append(sub.text.strip())
+            
+    return lst
+
+def build_graph_network(cur, conn, table_name):
+    # cur.execute('SELECT * FROM ' + table_name)
+    # graph = defaultdict(list)
+
+    # for row in cur:
+    #     genres = row[4].split(',')
+    #     for genre in genres:
+    #         if genre not in 
 
 
 
     pass
+
+
+def main():
+    # init the database
+    print('>>> INITIALIZING THE PATH.DB DATATBASE')
+    cur, conn = initialize_database('path.db')
+
+    # start of the spidering
+    # STARTIST_NAME = 'Taylor Swift'
+    # STARTIST_ID = '06HL4z0CvFAxyc27GXpf02'
+    # STARTIST_URL = 'https://api.spotify.com/v1/artists/' + STARTIST_ID +'/related-artists'
+
+
+    # # TODO: NEED TO FIX THIS FUNCTIONALITY
+    # if not cur.execute("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='root'"):
+    #     print ('>>> USING THE ALREADY EXISTING ROOT TABLE')
+    # else:
+    #     print('>>> CREATING A NEW ROOT TABLE')
+    #     billboard_url = "https://www.billboard.com/charts/artist-100"
+    #     billboard_list = scrape_billboard_artists(billboard_url)
+    #     billboard_urls = [build_url(artist, 'name') for artist in billboard_list] 
+    #     create_table(cur, conn, 'root')
+    #     make_append_root_requests(cur, conn, 'root', billboard_urls)
+    #     print('>>> CREATED THE ROOT TABLE')
+
+    # # # builds the root directory and seeds it with billboard data
+    
+    # lst = list(cur.execute('SELECT * FROM root'))
+    
+    # names_of_tables = []
+    
+    # # generates path for all of artist in root
+    # for row in lst[57:]:
+    #     ROOT_NAME = row[0]
+    #     ROOT_ID = row[1]
+    #     ROOT_URL = 'https://api.spotify.com/v1/artists/' + ROOT_ID +'/related-artists'
+
+    #     # cleans the artist name and removes all unnessary chars and replaces with a space
+    #     table_name = 'SUBPATH_' + ROOT_NAME.replace(' ', '_').replace('+', '').replace('/', '').replace('?', '').replace('.', '').replace('*', '').replace('\'', '').replace('!', '')
+    #     print(table_name)
+    #     create_table(cur, conn, table_name)
+    #     names_of_tables.append(table_name)
+
+    #     path_length = generate_path(cur, conn, table_name, ROOT_URL, ROOT_NAME)
+    #     print ('-----completed: ' + ROOT_NAME + '->' + str(path_length))
+
+
+
+    # build_graph_network(cur, conn, tables)
+
+
+
+
+    #generate_path(cur, conn, STARTIST_URL, STARTIST_NAME)
+    cur.execute('SELECT * FROM SUBPATH_Glass_Animals')
+    recomendations = list(cur) # stores the cur pointer in a list
+
+    # for artist in recomendations:
+    #     # name, ID, followers, popularity, genre, parent = artist
+    #     genre = artist[4].split(',')
+    #     print (genre)
+    
+    genres_per_artist = [artist[4].split(',') for artist in recomendations]
+    # for genre in genres_per_artist
+    
+    # doing this so i can compare (X) and (X + 1 th) list
+    # for i in range(len(genres_per_artist) - 1):
+    #     print(list(set(genres_per_artist[i]).symmetric_difference(set(genres_per_artist[i + 1]))))
+    graph = defaultdict(list)
+    for i in range(len(genres_per_artist) - 1):
+        # all elems that are in set a but not in set b
+        # print(set(genres_per_artist[i]) - set(genres_per_artist[i + 1]))
+        unique = set(genres_per_artist[i]) - set(genres_per_artist[i + 1])
+        for item in unique:
+            for val in genres_per_artist[i + 1]:
+                if val not in graph[item]:
+                    graph[item].append(val)
+    
+    list_of_tups = []
+
+    # print (graph)
+    for i in graph.keys():
+        for j in range(len(graph[i])):
+        # print (str(i)  + ' -> ' + str(graph[i])) 
+            list_of_tups.append((i, graph[i][j]))
+
+    for r in list_of_tups:
+        print(r)
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 if __name__ == "__main__":
     main()

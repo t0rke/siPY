@@ -249,10 +249,6 @@ def get_frequency(cur, conn, enabled = True):
         return
 
 
-def start_artist_one():
-    base_url = "https://api.spotify.com/v1/search?q="
-    post_url = "&type=artist&offset=0&limit=1"
-    return [base_url + artist.replace(' ', '?') + post_url for artist in data]
 
 
 
