@@ -14,6 +14,8 @@ from collections import defaultdict
 import networkx as nx
 import matplotlib.pyplot as plt
 
+import secrets
+
 # import plotly.offline as py
 # import plotly.graph_objects as go
 
@@ -164,7 +166,7 @@ def scrape_billboard_artists(url):
             
     return lst
 
-def build_graph_network(cur, conn, table_name):
+def build_graph_network(cur, conn, table_name, theme):
      # skips all of the rows with no genre data and begins first step of the pruning process
 
     cur.execute('SELECT * FROM ' + table_name + ' WHERE genre!=""')
@@ -210,15 +212,15 @@ def build_graph_network(cur, conn, table_name):
     plt.figure(figsize=(25,15))
 
     # drawing the graph componenets
-    nx.draw_networkx_nodes(G, pos, node_color = colors, node_size = [v * 75 for v in degrees.values()], cmap=plt.get_cmap('cool'), alpha=0.35s, linewidths=9)
+    nx.draw_networkx_nodes(G, pos, node_color = colors, node_size = [v * 75 for v in degrees.values()], cmap=plt.get_cmap(theme), alpha=0.45, linewidths=9)
     nx.draw_networkx_labels(G, pos, font_size=8, horizontalalignment='center', verticalalignment='center_baseline')
     nx.draw_networkx_edges(G, pos, edge_color='lightgray', arrows=False)
 
     title = 'Graph Network of Genres via SpotifyAPI stemming from ' + table_name[8:].replace('_', ' ')
-    # 
     plt.axis('off')
-    plt.title(title, loc='right')
+    plt.title(title, fontsize=15)
     plt.savefig('graphs/' + table_name[8:] + '.png', bbox_inches="tight", dpi=500)
+    plt.close()
 
 
 def main():
@@ -266,8 +268,23 @@ def main():
     #     print ('-----completed: ' + ROOT_NAME + '->' + str(path_length))
 
 
+    # gathers all of the table names from PATH and store them into table_names
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
+    table_names = [table[0] for table in list(cur.fetchall())]
 
-    build_graph_network(cur, conn, 'SUBPATH_Cardi_B')
+    # list of graph themes for the build graph options functions
+    themes = ['spring', 'summer', 'autumn', 'winter', 'cool', 'Wistia']
+
+    # removing the root table from the list of names
+    # this generates a table per artist and stores the graphs in the graph folder
+    table_names.pop(0)
+    for table in table_names:
+        build_graph_network(cur, conn, table, secrets.choice(themes))
+        print(">>>>>> CONTRUCTED GRAPH NETWORK ROOTING FROM " + table)
+
+
+    # for tablen in cur:
+    #     build_graph_network(cur, conn, 'SUBPATH_Cardi_B')
    
 
 
