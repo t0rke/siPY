@@ -223,6 +223,61 @@ def build_graph_network(cur, conn, table_name, theme):
     plt.close()
 
 
+# prints the entire aggregate data plot
+def net_plot(data, enabled = True):
+    if enabled: 
+        df = pd.DataFrame(data)
+        df.columns = ['genres', 'frequency']
+ 
+        plt.figure(figsize=(25,8))
+
+        ax = sns.scatterplot(data=df, x='genres', y='frequency', 
+                            hue='genres', palette='rainbow', size='frequency', sizes=(50,1000), 
+                            alpha=0.7)
+
+        # display legend without `size` attribute
+        h,labs = ax.get_legend_handles_labels()
+        ax.legend(h[1:10], labs[1:10], loc='best', title=None)
+
+        ax.axes.set_title("Genre Frequency from recommendations via Spotify",fontsize=15)
+        ax.set_xlabel("Genres",fontsize=10)
+        ax.set_ylabel("Frequency",fontsize=10) 
+        sns.despine(ax=ax)
+        plt.rcParams["xtick.major.size"] = 0
+        plt.xticks(rotation=90, fontsize=2)
+        plt.legend([],[], frameon=False)
+        plt.savefig('GenreFreq', bbox_inches="tight", dpi=500)
+
+# this aggregrates all the genre data
+def aggregate_data(cur,conn):
+    # gathers all of the table names from PATH and store them into table_names
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
+    table_names = [table[0] for table in list(cur.fetchall())]
+
+    graph = defaultdict(list)
+    for table in table_names:
+        if table != 'genres' and table != 'root':
+            cur.execute('SELECT * FROM ' + table + ' WHERE genre!=""')
+            recomendations = list(cur) # stores the cur pointer in a list
+            # TURNS THE GENRE tokens in a list of genres per artist
+            genres_per_artist = [artist[4].split(',') for artist in recomendations]
+            
+            for i in range(len(genres_per_artist) - 1):
+                # var unique = all elems that are in set a but not in set b
+                unique = set(genres_per_artist[i]) - set(genres_per_artist[i + 1])
+                for item in unique:
+                    for val in genres_per_artist[i + 1]:
+                        if val not in graph[item]:
+                            graph[item].append(val)
+
+    # tabulates the frequency of the genres
+    frequency = []
+    for genre in graph.keys():
+        frequency.append((genre, len(graph[genre])))
+
+    net_plot(frequency)
+
+
 def main():
     # init the database
     print('>>> INITIALIZING THE PATH.DB DATATBASE')
@@ -268,19 +323,91 @@ def main():
     #     print ('-----completed: ' + ROOT_NAME + '->' + str(path_length))
 
 
-    # gathers all of the table names from PATH and store them into table_names
-    cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
-    table_names = [table[0] for table in list(cur.fetchall())]
+
+
+
+
+
+    
 
     # list of graph themes for the build graph options functions
     themes = ['spring', 'summer', 'autumn', 'winter', 'cool', 'Wistia']
 
     # removing the root table from the list of names
     # this generates a table per artist and stores the graphs in the graph folder
-    table_names.pop(0)
-    for table in table_names:
-        build_graph_network(cur, conn, table, secrets.choice(themes))
-        print(">>>>>> CONTRUCTED GRAPH NETWORK ROOTING FROM " + table)
+    # table_names.pop(0)
+    # for table in table_names:
+    #     build_graph_network(cur, conn, table, secrets.choice(themes))
+    #     print(">>>>>> CONTRUCTED GRAPH NETWORK ROOTING FROM " + table)
+    aggregate_data(cur, conn)
+
+
+    
+    
+    # cur.execute('CREATE TABLE IF NOT EXISTS genres (category TEXT, edges TEXT)')
+
+    # for i in graph.keys():
+    #     cur.execute('INSERT INTO genres (category, edges) VALUES (?,?)', (i, len(graph[i])))
+    #     print(i + " " + str(len(graph[i])))
+            
+
+    # plt.figure(figsize=(10,10))
+
+    # ax = sns.scatterplot(data=df, x='popularity', y='followers', 
+    #                     hue='name', palette='rainbow', 
+    #                     size='ranking', sizes=(50,1000), 
+    #                     alpha=0.7)
+
+    # # display legend without `size` attribute
+    # h,labs = ax.get_legend_handles_labels()
+    # ax.legend(h[1:10], labs[1:10], loc='best', title=None)
+
+    # ax.axes.set_title("Popularity vs Followers via Spotify",fontsize=15)
+    # ax.set_xlabel("Popularity",fontsize=2)
+    # ax.set_ylabel("Followers",fontsize=10) 
+    # sns.despine(ax=ax)
+    # plt.legend([],[], frameon=False)
+
+    # plt.show()
+
+
+
+
+    # edges = []
+    # for i in graph.keys():
+    #     for j in range(len(graph[i])):
+    #         edges.append((i, graph[i][j]))
+    
+    # # intializing the graph
+    # G = nx.DiGraph()
+    # G.add_edges_from(edges)
+
+    # # creating a frequency dictionary for edges for node sizing
+    # degrees = dict(G.degree)
+
+    # # the color map is created here:
+    # colors = [(i/len(G.nodes)) for i in range(len(G.nodes))]
+
+    # # setting the layout type
+    # pos = nx.spring_layout(G, k=0.5, iterations=20)
+    # nx.set_node_attributes(G, val, 'val')
+    
+    # # printing properties
+    # plt.autoscale(True)
+    # plt.margins(0.025)
+    # plt.figure(figsize=(25,15))
+
+    # # drawing the graph componenets
+    # nx.draw_networkx_nodes(G, pos, node_color = colors, node_size = [v * 75 for v in degrees.values()], cmap=plt.get_cmap('winter'), alpha=0.45, linewidths=9)
+    # nx.draw_networkx_labels(G, pos, font_size=8, horizontalalignment='center', verticalalignment='center_baseline')
+    # # nx.draw_networkx_edges(G, pos, edge_color='lightgray', arrows=False)
+
+    # plt.axis('off')
+    # plt.title('complete', fontsize=15)
+    # plt.savefig('graphs/Complete.png', bbox_inches="tight", dpi=500)
+    # # plt.show()
+    # plt.close()
+
 
 
     # for tablen in cur:

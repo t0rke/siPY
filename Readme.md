@@ -28,4 +28,3 @@ The program will start out by constructing a list of existing databases in `path
 4. For each new artist a genre dictionary will be constructed and saved to the graps folder highlighting Graph network of Spotify genres for that artist
 5. A cumulative Graph network will be created for all artists using that subdictionary details that were discovered per artist
 6. This final plot will be displayed
-

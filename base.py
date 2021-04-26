@@ -269,6 +269,7 @@ def main():
     api_followers = make_requests(wikipedia_urls_followers)
     api_rankings = make_requests(billboard_urls)
     api_rankings_dict = make_requests_dict(billboard_urls)
+    print(api_rankings_dict)
 
     # initilizes the database pointers
     cur, conn = initialize_database('spotify_data.db')
