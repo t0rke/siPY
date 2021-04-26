@@ -165,17 +165,60 @@ def scrape_billboard_artists(url):
     return lst
 
 def build_graph_network(cur, conn, table_name):
-    # cur.execute('SELECT * FROM ' + table_name)
-    # graph = defaultdict(list)
+     # skips all of the rows with no genre data and begins first step of the pruning process
 
-    # for row in cur:
-    #     genres = row[4].split(',')
-    #     for genre in genres:
-    #         if genre not in 
+    cur.execute('SELECT * FROM ' + table_name + ' WHERE genre!=""')
+    recomendations = list(cur) # stores the cur pointer in a list
 
+    # TURNS THE GENRE tokens in a list of genres per artist
+    genres_per_artist = [artist[4].split(',') for artist in recomendations]
 
+    graph = defaultdict(list)
+    for i in range(len(genres_per_artist) - 1):
+        # var unique = all elems that are in set a but not in set b
+        unique = set(genres_per_artist[i]) - set(genres_per_artist[i + 1])
+        for item in unique:
+            for val in genres_per_artist[i + 1]:
+                if val not in graph[item]:
+                    graph[item].append(val)
+    
+    # This turns the dictionary of lists into graph edges
+    # {A : B, C, D} into (A,B), (A, C), (A, D)
+    edges = []
+    for i in graph.keys():
+        for j in range(len(graph[i])):
+            edges.append((i, graph[i][j]))
 
-    pass
+    """ The following are the node attributes and these determine the properties that a node will gave """
+    # intializing the graph
+    G = nx.DiGraph()
+    G.add_edges_from(edges)
+
+    # creating a frequency dictionary for edges for node sizing
+    degrees = dict(G.degree)
+
+    # the color map is created here:
+    colors = [(i/len(G.nodes)) for i in range(len(G.nodes))]
+
+    # setting the layout type
+    pos = nx.spring_layout(G, k=0.5, iterations=20)
+    nx.set_node_attributes(G, val, 'val')
+    
+    # printing properties
+    plt.autoscale(True)
+    plt.margins(0.025)
+    plt.figure(figsize=(25,15))
+
+    # drawing the graph componenets
+    nx.draw_networkx_nodes(G, pos, node_color = colors, node_size = [v * 75 for v in degrees.values()], cmap=plt.get_cmap('cool'), alpha=0.35s, linewidths=9)
+    nx.draw_networkx_labels(G, pos, font_size=8, horizontalalignment='center', verticalalignment='center_baseline')
+    nx.draw_networkx_edges(G, pos, edge_color='lightgray', arrows=False)
+
+    title = 'Graph Network of Genres via SpotifyAPI stemming from ' + table_name[8:].replace('_', ' ')
+    # 
+    plt.axis('off')
+    plt.title(title, loc='right')
+    plt.savefig('graphs/' + table_name[8:] + '.png', bbox_inches="tight", dpi=500)
 
 
 def main():
@@ -224,53 +267,12 @@ def main():
 
 
 
+    build_graph_network(cur, conn, 'SUBPATH_Cardi_B')
+   
 
-    # skips all of the rows with no genre data and begins first step of the pruning process
-    cur.execute('SELECT * FROM SUBPATH_Glass_Animals WHERE genre!=""')
-    recomendations = list(cur) # stores the cur pointer in a list
 
-    # TURNS THE GENRE tokens in a list of genres per artist
-    genres_per_artist = [artist[4].split(',') for artist in recomendations]
-    
 
-    graph = defaultdict(list)
-    for i in range(len(genres_per_artist) - 1):
-        # all elems that are in set a but not in set b
-        # print(set(genres_per_artist[i]) - set(genres_per_artist[i + 1]))
-        unique = set(genres_per_artist[i]) - set(genres_per_artist[i + 1])
 
-        for item in unique:
-            for val in genres_per_artist[i + 1]:
-                if val not in graph[item]:
-                    graph[item].append(val)
-    
-
-    # This turns the dictionary of lists into graph edges
-    # {A : B, C, D} into (A,B), (A, C), (A, D)
-    edges = []
-    for i in graph.keys():
-        for j in range(len(graph[i])):
-            edges.append((i, graph[i][j]))
-
-    
-
-    """ The following are the node attributes and these determine the properties that a node will gave """
-    # creating the graph
-    G = nx.DiGraph()
-    G.add_edges_from(edges)
-    degrees = dict(G.degree)
-
-    # the color map is created here:
-    colors = [(i/len(G.nodes)) for i in range(len(G.nodes))]
-
-    # setting the layout type
-    pos = nx.spring_layout(G, k=0.5, iterations=20)
-    nx.set_node_attributes(G, val, 'val')
-
-    # drawing the graph componenets
-    nx.draw_networkx_nodes(G, pos, node_color = colors, node_size = [v * 25 for v in degrees.values()], cmap=plt.get_cmap('winter'))
-    nx.draw_networkx_labels(G, pos, font_size=7)
-    nx.draw_networkx_edges(G, pos, edge_color='lightgray', arrows=False)
 
     # G.legend(frameon=False)
     # G.margins(0.0)
@@ -294,7 +296,7 @@ def main():
     # # Show figure
     # fig.show()
 
-    plt.show()
+    # plt.show()
     return
 
     
