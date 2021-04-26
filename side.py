@@ -11,6 +11,12 @@ import pandas as pd
 
 from collections import defaultdict
 
+import networkx as nx
+import matplotlib.pyplot as plt
+
+# import plotly.offline as py
+# import plotly.graph_objects as go
+
 master = 0
 
 pp = pprint.PrettyPrinter(indent=4)
@@ -218,48 +224,113 @@ def main():
 
 
 
-    # build_graph_network(cur, conn, tables)
 
-
-
-
-    #generate_path(cur, conn, STARTIST_URL, STARTIST_NAME)
-    cur.execute('SELECT * FROM SUBPATH_Glass_Animals')
+    # skips all of the rows with no genre data and begins first step of the pruning process
+    cur.execute('SELECT * FROM SUBPATH_Glass_Animals WHERE genre!=""')
     recomendations = list(cur) # stores the cur pointer in a list
 
-    # for artist in recomendations:
-    #     # name, ID, followers, popularity, genre, parent = artist
-    #     genre = artist[4].split(',')
-    #     print (genre)
-    
+    # TURNS THE GENRE tokens in a list of genres per artist
     genres_per_artist = [artist[4].split(',') for artist in recomendations]
-    # for genre in genres_per_artist
     
-    # doing this so i can compare (X) and (X + 1 th) list
-    # for i in range(len(genres_per_artist) - 1):
-    #     print(list(set(genres_per_artist[i]).symmetric_difference(set(genres_per_artist[i + 1]))))
+
     graph = defaultdict(list)
     for i in range(len(genres_per_artist) - 1):
         # all elems that are in set a but not in set b
         # print(set(genres_per_artist[i]) - set(genres_per_artist[i + 1]))
         unique = set(genres_per_artist[i]) - set(genres_per_artist[i + 1])
+
         for item in unique:
             for val in genres_per_artist[i + 1]:
                 if val not in graph[item]:
                     graph[item].append(val)
     
-    list_of_tups = []
 
-    # print (graph)
+    # This turns the dictionary of lists into graph edges
+    # {A : B, C, D} into (A,B), (A, C), (A, D)
+    edges = []
     for i in graph.keys():
         for j in range(len(graph[i])):
-        # print (str(i)  + ' -> ' + str(graph[i])) 
-            list_of_tups.append((i, graph[i][j]))
+            edges.append((i, graph[i][j]))
 
-    for r in list_of_tups:
-        print(r)
     
 
+    """ The following are the node attributes and these determine the properties that a node will gave """
+    # creating the graph
+    G = nx.DiGraph()
+    G.add_edges_from(edges)
+    degrees = dict(G.degree)
+
+    # the color map is created here:
+    colors = [(i/len(G.nodes)) for i in range(len(G.nodes))]
+
+    # setting the layout type
+    pos = nx.spring_layout(G, k=0.5, iterations=20)
+    nx.set_node_attributes(G, val, 'val')
+
+    # drawing the graph componenets
+    nx.draw_networkx_nodes(G, pos, node_color = colors, node_size = [v * 25 for v in degrees.values()], cmap=plt.get_cmap('winter'))
+    nx.draw_networkx_labels(G, pos, font_size=7)
+    nx.draw_networkx_edges(G, pos, edge_color='lightgray', arrows=False)
+
+    # G.legend(frameon=False)
+    # G.margins(0.0)
+
+
+        # Customize layout
+    # layout = G.Layout(
+    #     paper_bgcolor='rgba(0,0,0,0)', # transparent background
+    #     plot_bgcolor='rgba(0,0,0,0)', # transparent 2nd background
+    #     xaxis =  {'showgrid': False, 'zeroline': False}, # no gridlines
+    #     yaxis = {'showgrid': False, 'zeroline': False}, # no gridlines
+    # )
+    # # Create figure
+    # fig = G.Figure(layout = layout)
+    # # Add all edge traces
+    # # Remove legend
+    # fig.update_layout(showlegend = False)
+    # # Remove tick labels
+    # fig.update_xaxes(showticklabels = False)
+    # fig.update_yaxes(showticklabels = False)
+    # # Show figure
+    # fig.show()
+
+    plt.show()
+    return
+
+    
+    
+    
+"""
+import networkx as nx
+import matplotlib.pyplot as plt
+
+G = nx.DiGraph()
+G.add_edges_from(
+    [('A', 'B'), ('A', 'C'), ('D', 'B'), ('E', 'C'), ('E', 'F'),
+     ('B', 'H'), ('B', 'G'), ('B', 'F'), ('C', 'G')])
+
+val_map = {'A': 1.0,
+           'D': 0.5714285714285714,
+           'H': 0.0}
+
+values = [val_map.get(node, 0.25) for node in G.nodes()]
+
+# Specify the edges you want here
+red_edges = [('A', 'C'), ('E', 'C')]
+edge_colours = ['black' if not edge in red_edges else 'red'
+                for edge in G.edges()]
+black_edges = [edge for edge in G.edges() if edge not in red_edges]
+
+# Need to create a layout when doing
+# separate calls to draw nodes and edges
+pos = nx.spring_layout(G)
+nx.draw_networkx_nodes(G, pos, cmap=plt.get_cmap('jet'), 
+                       node_color = values, node_size = 500)
+nx.draw_networkx_labels(G, pos)
+nx.draw_networkx_edges(G, pos, edgelist=red_edges, edge_color='r', arrows=True)
+nx.draw_networkx_edges(G, pos, edgelist=black_edges, arrows=False)
+plt.show()
+"""
 
 
 
