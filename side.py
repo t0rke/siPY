@@ -11,11 +11,9 @@ import networkx as nx  # for the networks
 import secrets # to chose a color theme for the network graphs
 
 import pandas as pd # for dataframes
-
 from collections import defaultdict # for a dict of appendable lists
-
 from datetime import datetime
-
+# absolute garbage module
 import re
 
 
@@ -95,8 +93,6 @@ def make_append_root_requests(cur, conn, table_name, urls):
         else:
             print('>>> REQUEST FAILED! UNABLE TO PULL DATA FOR URL: ' + url)
 
-    # [append_table(cur, conn, table_name, get_artist_data(url)) for url in urls]
-
 
 # gets a set of up to 20 related artists from a artist recomendation
 def get_related_artists(req_url, parent):
@@ -116,7 +112,6 @@ def get_related_artists(req_url, parent):
         popularity = item['popularity']
 
         recommended.append((name, ID, followers, popularity, genres, parent))
-        # print (name, ID, followers, popularity, parent)
     return recommended
 
 
@@ -161,10 +156,10 @@ def scrape_billboard_artists(url):
             
     return lst
 
-
+# buids a directed graph network using genres and nodes and edges as relations
+# the graph is unweighted for visual comfort but is calculated in a weighted fashion
 def build_graph_network(cur, conn, table_name, theme):
      # skips all of the rows with no genre data and begins first step of the pruning process
-
     cur.execute('SELECT * FROM ' + table_name + ' WHERE genre!=""')
     recomendations = list(cur) # stores the cur pointer in a list
 
@@ -275,11 +270,11 @@ def aggregate_data(cur,conn, table_names):
 def main():
     p0 = datetime.now()
     """
-        Part 1:
-        1. The Billboard top 100 artists list is scraped and stored into a list
-        2. The new artist list is compared to the existing artists to determine which to add to the ROOT if any
-        3. If a ROOT table does not exist in the path database, the ROOT file is created to store the path heads in path.db
-        4. The ROOT table is appended with the new artist list (name, id, followers, popularity, genres, NULL)
+    Part 1:
+    1. The Billboard top 100 artists list is scraped and stored into a list
+    2. The new artist list is compared to the existing artists to determine which to add to the ROOT if any
+    3. If a ROOT table does not exist in the path database, the ROOT file is created to store the path heads in path.db
+    4. The ROOT table is appended with the new artist list (name, id, followers, popularity, genres, NULL)
         
     """
     # init the database
@@ -317,11 +312,11 @@ def main():
     p1 = datetime.now()
 
     """
-        Part 2:
-        1. Sets the start position of the recently appended potion of the root as "start" to avoid path regeneration for paths that already exist
-        2. Iterates from "start" to the end of ROOT and builds a SpotifyAPI call using the artistID gathered from the ROOT
-        3. Creates a new table for each new artist in ROOT that is compatible with sqlite3's formatting regulations
-        4. Builds a 100 item long path per new artist within ROOT using linear pathfinding and appends data to each new artist's table
+    Part 2:
+    1. Sets the start position of the recently appended potion of the root as "start" to avoid path regeneration for paths that already exist
+    2. Iterates from "start" to the end of ROOT and builds a SpotifyAPI call using the artistID gathered from the ROOT
+    3. Creates a new table for each new artist in ROOT that is compatible with sqlite3's formatting regulations
+    4. Builds a 100 item long path per new artist within ROOT using linear pathfinding and appends data to each new artist's table
 
     """
     table_names = []
@@ -344,11 +339,11 @@ def main():
     p2 = datetime.now()
    
     """
-        Part 3:
-        1. Creates a directory called graphs to store all the graphs generated in the following part
-        2. Using python secrets, a random theme is selected and pushed to the graph builder function
-        3. A graph is created by mapping recomended genres stemming from ROOT artist on to one another and generated with the networkx module
-        4. The graphs are saved in .graphs/ directory
+    Part 3:
+    1. Creates a directory called graphs to store all the graphs generated in the following part
+    2. Using python secrets, a random theme is selected and pushed to the graph builder function
+    3. A graph is created by mapping recomended genres stemming from ROOT artist on to one another and generated with the networkx module
+    4. The graphs are saved in .graphs/ directory
         
     """
     # list of graph themes for the build graph options functions
@@ -364,15 +359,14 @@ def main():
 
     p3 = datetime.now()
     """
-        Part 4: 
-        1. This creates a cumulative graph network of all artist's genres interconnection using the data provided by the SpotifyAPI recomendations feature
-        2. The graph shows the weightage of each recomendation and the frequency with which its recomended
-        3. The graph is diplayed and stored in the project directory
-        4. A runtime summary message is printed
+    Part 4: 
+    1. This creates a cumulative graph network of all artist's genres interconnection using the data provided by the SpotifyAPI recomendations feature
+    2. The graph shows the weightage of each recomendation and the frequency with which its recomended
+    3. The graph is diplayed and stored in the project directory
+    4. A runtime summary message is printed
     """
     aggregate_data(cur, conn, table_names)
     
-  
     print()
     print("*************************************************")
     print("The total runtime was: " + str(datetime.now() - p0))
@@ -381,153 +375,6 @@ def main():
     print("The GRAPHING portion: " + str(p3 - p2))
     print("The AGGREGATION portion: " + str(datetime.now() - p3))
     print("*************************************************")
-
-    
-    
-    # cur.execute('CREATE TABLE IF NOT EXISTS genres (category TEXT, edges TEXT)')
-
-    # for i in graph.keys():
-    #     cur.execute('INSERT INTO genres (category, edges) VALUES (?,?)', (i, len(graph[i])))
-    #     print(i + " " + str(len(graph[i])))
-            
-
-    # plt.figure(figsize=(10,10))
-
-    # ax = sns.scatterplot(data=df, x='popularity', y='followers', 
-    #                     hue='name', palette='rainbow', 
-    #                     size='ranking', sizes=(50,1000), 
-    #                     alpha=0.7)
-
-    # # display legend without `size` attribute
-    # h,labs = ax.get_legend_handles_labels()
-    # ax.legend(h[1:10], labs[1:10], loc='best', title=None)
-
-    # ax.axes.set_title("Popularity vs Followers via Spotify",fontsize=15)
-    # ax.set_xlabel("Popularity",fontsize=2)
-    # ax.set_ylabel("Followers",fontsize=10) 
-    # sns.despine(ax=ax)
-    # plt.legend([],[], frameon=False)
-
-    # plt.show()
-
-
-
-
-    # edges = []
-    # for i in graph.keys():
-    #     for j in range(len(graph[i])):
-    #         edges.append((i, graph[i][j]))
-    
-    # # intializing the graph
-    # G = nx.DiGraph()
-    # G.add_edges_from(edges)
-
-    # # creating a frequency dictionary for edges for node sizing
-    # degrees = dict(G.degree)
-
-    # # the color map is created here:
-    # colors = [(i/len(G.nodes)) for i in range(len(G.nodes))]
-
-    # # setting the layout type
-    # pos = nx.spring_layout(G, k=0.5, iterations=20)
-    # nx.set_node_attributes(G, val, 'val')
-    
-    # # printing properties
-    # plt.autoscale(True)
-    # plt.margins(0.025)
-    # plt.figure(figsize=(25,15))
-
-    # # drawing the graph componenets
-    # nx.draw_networkx_nodes(G, pos, node_color = colors, node_size = [v * 75 for v in degrees.values()], cmap=plt.get_cmap('winter'), alpha=0.45, linewidths=9)
-    # nx.draw_networkx_labels(G, pos, font_size=8, horizontalalignment='center', verticalalignment='center_baseline')
-    # # nx.draw_networkx_edges(G, pos, edge_color='lightgray', arrows=False)
-
-    # plt.axis('off')
-    # plt.title('complete', fontsize=15)
-    # plt.savefig('graphs/Complete.png', bbox_inches="tight", dpi=500)
-    # # plt.show()
-    # plt.close()
-
-
-
-    # for tablen in cur:
-    #     build_graph_network(cur, conn, 'SUBPATH_Cardi_B')
-   
-
-
-
-
-
-    # G.legend(frameon=False)
-    # G.margins(0.0)
-
-
-        # Customize layout
-    # layout = G.Layout(
-    #     paper_bgcolor='rgba(0,0,0,0)', # transparent background
-    #     plot_bgcolor='rgba(0,0,0,0)', # transparent 2nd background
-    #     xaxis =  {'showgrid': False, 'zeroline': False}, # no gridlines
-    #     yaxis = {'showgrid': False, 'zeroline': False}, # no gridlines
-    # )
-    # # Create figure
-    # fig = G.Figure(layout = layout)
-    # # Add all edge traces
-    # # Remove legend
-    # fig.update_layout(showlegend = False)
-    # # Remove tick labels
-    # fig.update_xaxes(showticklabels = False)
-    # fig.update_yaxes(showticklabels = False)
-    # # Show figure
-    # fig.show()
-
-    # plt.show()
-    return
-
-    
-    
-    
-"""
-import networkx as nx
-import matplotlib.pyplot as plt
-
-G = nx.DiGraph()
-G.add_edges_from(
-    [('A', 'B'), ('A', 'C'), ('D', 'B'), ('E', 'C'), ('E', 'F'),
-     ('B', 'H'), ('B', 'G'), ('B', 'F'), ('C', 'G')])
-
-val_map = {'A': 1.0,
-           'D': 0.5714285714285714,
-           'H': 0.0}
-
-values = [val_map.get(node, 0.25) for node in G.nodes()]
-
-# Specify the edges you want here
-red_edges = [('A', 'C'), ('E', 'C')]
-edge_colours = ['black' if not edge in red_edges else 'red'
-                for edge in G.edges()]
-black_edges = [edge for edge in G.edges() if edge not in red_edges]
-
-# Need to create a layout when doing
-# separate calls to draw nodes and edges
-pos = nx.spring_layout(G)
-nx.draw_networkx_nodes(G, pos, cmap=plt.get_cmap('jet'), 
-                       node_color = values, node_size = 500)
-nx.draw_networkx_labels(G, pos)
-nx.draw_networkx_edges(G, pos, edgelist=red_edges, edge_color='r', arrows=True)
-nx.draw_networkx_edges(G, pos, edgelist=black_edges, arrows=False)
-plt.show()
-"""
-
-
-
-
-
-
-
-
-
-
-
 
 
 if __name__ == "__main__":
