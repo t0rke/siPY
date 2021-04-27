@@ -4,36 +4,30 @@ import pprint
 import sqlite3
 import os
 
+# for the graphing
 import matplotlib.pyplot as plt
-import seaborn as sns   
+import seaborn as sns  # for the linear charts
+import networkx as nx  # for the networks
+import secrets # to chose a color theme for the network graphs
 
-import pandas as pd
+import pandas as pd # for dataframes
 
-from collections import defaultdict
+from collections import defaultdict # for a dict of appendable lists
 
-import networkx as nx
-import matplotlib.pyplot as plt
+from datetime import datetime
 
-import secrets
+import re
 
-# import plotly.offline as py
-# import plotly.graph_objects as go
 
-master = 0
-
-pp = pprint.PrettyPrinter(indent=4)
+master = 0 # used for emergency pathing stop
 
 cid = '9388b60e9dbc4a1ba26d013fcf84d951' # client ID
 secret = '85bfc336314d4fa8a808d5250b5452eb' # client secret
 
 AUTH_URL = 'https://accounts.spotify.com/api/token'
 
-# POST
-auth_response = requests.post(AUTH_URL, {
-    'grant_type': 'client_credentials',
-    'client_id': cid,
-    'client_secret': secret,
-})
+# AUTH TOKEN
+auth_response = requests.post(AUTH_URL, {'grant_type': 'client_credentials', 'client_id': cid, 'client_secret': secret,})
 
 # convert the response to JSON
 auth_response_data = auth_response.json()
@@ -44,6 +38,7 @@ access_token = auth_response_data['access_token']
 # provides authentications
 headers = {'Authorization': 'Bearer {token}'.format(token=access_token)}
 
+# creates a new database
 def initialize_database(db_name):
     path = os.path.dirname(os.path.abspath(__file__))
     conn = sqlite3.connect(path+'/'+db_name)
@@ -51,18 +46,23 @@ def initialize_database(db_name):
     return cur, conn
 
 
+# creates a table with artist data
 def create_table(cur, conn, table_name):
     cur.execute('DROP TABLE IF EXISTS ' + table_name)
     cur.execute('CREATE TABLE IF NOT EXISTS ' + table_name + ' (name TEXT PRIMARY KEY, id TEXT, followers INTEGER, popularity INTEGER, genre TEXT, parent TEXT)')
     conn.commit()
 
 
+# appends the table with new data
 def append_table(cur, conn, table_name, data):
+    
     if len(data) == 5: # handles the root case
         data.append(None)
-    cur.execute('INSERT INTO ' + table_name + ' (name, id, followers, popularity, genre, parent) VALUES (?,?,?,?,?,?)', (data[0], data[1], data[2], data[3], data[4], data[5]))
+    cur.execute('INSERT OR REPLACE INTO ' + table_name + ' (name, id, followers, popularity, genre, parent) VALUES (?,?,?,?,?,?)', (data[0], data[1], data[2], data[3], data[4], data[5]))
     conn.commit()
 
+
+# builds the url from the artist name or id
 def build_url(artist_tag, mode):
     if mode == 'id':
         return 'https://api.spotify.com/v1/artists/' + artist_tag +'/related-artists'
@@ -90,17 +90,20 @@ def get_artist_data(req_url):
 def make_append_root_requests(cur, conn, table_name, urls):
     for url in urls:
         data = get_artist_data(url)
-        append_table(cur, conn, table_name, data)
+        if data:
+            append_table(cur, conn, table_name, data)
+        else:
+            print('>>> REQUEST FAILED! UNABLE TO PULL DATA FOR URL: ' + url)
 
     # [append_table(cur, conn, table_name, get_artist_data(url)) for url in urls]
 
 
+# gets a set of up to 20 related artists from a artist recomendation
 def get_related_artists(req_url, parent):
     r = requests.get(req_url, headers=headers)
     dic = r.json()
 
     recommended = []
-
     if master > 20: # halts if no more recomendations can be made
         return
 
@@ -114,7 +117,6 @@ def get_related_artists(req_url, parent):
 
         recommended.append((name, ID, followers, popularity, genres, parent))
         # print (name, ID, followers, popularity, parent)
-
     return recommended
 
 
@@ -127,17 +129,11 @@ def generate_path(cur, conn, table_name, url, name):
     discovered = []
     discovered.append(name)
 
-    # miss = 0
-    # duplicate_profile = []
     run = True
     while len(discovered) < 100 and run and len(data):
         cutoff = 0
         for entry in data:
-
             if entry[0] not in discovered:
-                # print(entry)
-                # duplicate_profile.append(miss)
-                # miss = 0
                 discovered.append(entry[0])
                 next_url = build_url(entry[1], 'id')
                 append_table(cur, conn, table_name, entry)
@@ -145,7 +141,6 @@ def generate_path(cur, conn, table_name, url, name):
                 
                 break
             else:
-                # miss += 1
                 cutoff += 1
                 if (cutoff == len(data)):
                     run = False
@@ -165,6 +160,7 @@ def scrape_billboard_artists(url):
             lst.append(sub.text.strip())
             
     return lst
+
 
 def build_graph_network(cur, conn, table_name, theme):
      # skips all of the rows with no genre data and begins first step of the pruning process
@@ -248,12 +244,10 @@ def net_plot(data, enabled = True):
         plt.legend([],[], frameon=False)
         plt.savefig('GenreFreq', bbox_inches="tight", dpi=500)
 
-# this aggregrates all the genre data
-def aggregate_data(cur,conn):
-    # gathers all of the table names from PATH and store them into table_names
-    cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
-    table_names = [table[0] for table in list(cur.fetchall())]
 
+# this aggregrates all the genre data
+def aggregate_data(cur,conn, table_names):
+    # gathers all of the table names from PATH and store them into table_names
     graph = defaultdict(list)
     for table in table_names:
         if table != 'genres' and table != 'root':
@@ -279,68 +273,114 @@ def aggregate_data(cur,conn):
 
 
 def main():
+    p0 = datetime.now()
+    """
+        Part 1:
+        1. The Billboard top 100 artists list is scraped and stored into a list
+        2. The new artist list is compared to the existing artists to determine which to add to the ROOT if any
+        3. If a ROOT table does not exist in the path database, the ROOT file is created to store the path heads in path.db
+        4. The ROOT table is appended with the new artist list (name, id, followers, popularity, genres, NULL)
+        
+    """
     # init the database
     print('>>> INITIALIZING THE PATH.DB DATATBASE')
     cur, conn = initialize_database('path.db')
 
-    # start of the spidering
-    # STARTIST_NAME = 'Taylor Swift'
-    # STARTIST_ID = '06HL4z0CvFAxyc27GXpf02'
-    # STARTIST_URL = 'https://api.spotify.com/v1/artists/' + STARTIST_ID +'/related-artists'
+    print('>>> GENERATING/USING A NEW ROOT TABLE')
+    billboard_url = "https://www.billboard.com/charts/artist-100"
+    billboard_list = scrape_billboard_artists(billboard_url)
+    # Following two lists used to determine what to add to existing root file
+    billboard_tables = [('SUBPATH_' + item.replace(' ', '_').replace('+', '').replace('/', '').replace('?', '')
+    .replace('.', '').replace('*', '').replace('\'', '').replace('!', '')) for item in billboard_list]
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
+    existing_tables = [table[0] for table in list(cur.fetchall())]
+    # determines the new items needed
+    difference_list = [re.sub(' +', ' ',item[7:].replace('_', ' ')).lstrip() for item in list(set(billboard_tables) - set(existing_tables))]
 
-
-    # # TODO: NEED TO FIX THIS FUNCTIONALITY
-    # if not cur.execute("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='root'"):
-    #     print ('>>> USING THE ALREADY EXISTING ROOT TABLE')
-    # else:
-    #     print('>>> CREATING A NEW ROOT TABLE')
-    #     billboard_url = "https://www.billboard.com/charts/artist-100"
-    #     billboard_list = scrape_billboard_artists(billboard_url)
-    #     billboard_urls = [build_url(artist, 'name') for artist in billboard_list] 
-    #     create_table(cur, conn, 'root')
-    #     make_append_root_requests(cur, conn, 'root', billboard_urls)
-    #     print('>>> CREATED THE ROOT TABLE')
-
-    # # # builds the root directory and seeds it with billboard data
+    start = 0
+    if 'root' not in existing_tables:
+        create_table(cur, conn, 'root')
+        new_urls = [build_url(artist, 'name') for artist in  billboard_list] 
+        make_append_root_requests(cur, conn, 'root', new_urls)
+    elif difference_list:
+        print ('>>> ' + str(len(difference_list)) + ' DISCREPANCIES DETECTED IN BILLBOARD LIST AND EXISTING TABLE LIST: ' + str(difference_list))
+        new_urls = [build_url(artist, 'name') for artist in difference_list] 
+        # creates a new root table incase it doesnt exist
+        make_append_root_requests(cur, conn, 'root', new_urls)
+        start = len(list(cur.execute('SELECT * FROM root'))) - 2
+        print('>>> UPDATED THE ROOT TABLE')
+        # lst = list(cur.execute('SELECT * FROM root'))
+    else:
+        print('>>> USING THE ALREADY EXISTING ROOT TABLE')
+        # lst = list(cur.execute('SELECT * FROM root'))
     
-    # lst = list(cur.execute('SELECT * FROM root'))
+    p1 = datetime.now()
+
+    """
+        Part 2:
+        1. Sets the start position of the recently appended potion of the root as "start" to avoid path regeneration for paths that already exist
+        2. Iterates from "start" to the end of ROOT and builds a SpotifyAPI call using the artistID gathered from the ROOT
+        3. Creates a new table for each new artist in ROOT that is compatible with sqlite3's formatting regulations
+        4. Builds a 100 item long path per new artist within ROOT using linear pathfinding and appends data to each new artist's table
+
+    """
+    table_names = []
+    row_data = list(cur.execute('SELECT * FROM root'))[start:]
+    print('>>> STARTING PATHFINDING FOR NEW ARTISTS')
+    for row in row_data:
+        ROOT_NAME = row[0]
+        ROOT_ID = row[1]
+        ROOT_URL = 'https://api.spotify.com/v1/artists/' + ROOT_ID +'/related-artists'
+
+        # cleans the artist name and removes all unnessary chars and replaces with a space
+        table_name = 'SUBPATH_' + ROOT_NAME.replace(' ', '_').replace('+', '').replace('/', '').replace('?', '').replace('.', '').replace('*', '').replace('\'', '').replace('!', '')
+        create_table(cur, conn, table_name)
+        table_names.append(table_name)
+
+        path_length = generate_path(cur, conn, table_name, ROOT_URL, ROOT_NAME)
+        print ('>>>>>> {completed: ' + ROOT_NAME + ' -> ' + str(path_length) + '}')
+    print('>>> CONCLUDED PATHFINDING FOR NEW ARTISTS')
     
-    # names_of_tables = []
-    
-    # # generates path for all of artist in root
-    # for row in lst[57:]:
-    #     ROOT_NAME = row[0]
-    #     ROOT_ID = row[1]
-    #     ROOT_URL = 'https://api.spotify.com/v1/artists/' + ROOT_ID +'/related-artists'
-
-    #     # cleans the artist name and removes all unnessary chars and replaces with a space
-    #     table_name = 'SUBPATH_' + ROOT_NAME.replace(' ', '_').replace('+', '').replace('/', '').replace('?', '').replace('.', '').replace('*', '').replace('\'', '').replace('!', '')
-    #     print(table_name)
-    #     create_table(cur, conn, table_name)
-    #     names_of_tables.append(table_name)
-
-    #     path_length = generate_path(cur, conn, table_name, ROOT_URL, ROOT_NAME)
-    #     print ('-----completed: ' + ROOT_NAME + '->' + str(path_length))
-
-
-
-
-
-
-
-    
-
+    p2 = datetime.now()
+   
+    """
+        Part 3:
+        1. Creates a directory called graphs to store all the graphs generated in the following part
+        2. Using python secrets, a random theme is selected and pushed to the graph builder function
+        3. A graph is created by mapping recomended genres stemming from ROOT artist on to one another and generated with the networkx module
+        4. The graphs are saved in .graphs/ directory
+        
+    """
     # list of graph themes for the build graph options functions
     themes = ['spring', 'summer', 'autumn', 'winter', 'cool', 'Wistia']
 
     # removing the root table from the list of names
     # this generates a table per artist and stores the graphs in the graph folder
-    # table_names.pop(0)
-    # for table in table_names:
-    #     build_graph_network(cur, conn, table, secrets.choice(themes))
-    #     print(">>>>>> CONTRUCTED GRAPH NETWORK ROOTING FROM " + table)
-    aggregate_data(cur, conn)
+    os.mkdir('graphs')
+    for table in table_names:
+        if table != 'genre' and table != 'root':
+            build_graph_network(cur, conn, table, secrets.choice(themes))
+            print(">>>>>> CONTRUCTED GRAPH NETWORK ROOTING FROM " + table)
 
+    p3 = datetime.now()
+    """
+        Part 4: 
+        1. This creates a cumulative graph network of all artist's genres interconnection using the data provided by the SpotifyAPI recomendations feature
+        2. The graph shows the weightage of each recomendation and the frequency with which its recomended
+        3. The graph is diplayed and stored in the project directory
+        4. A runtime summary message is printed
+    """
+    aggregate_data(cur, conn, table_names)
+    
+  
+    print()
+    print("*************************************************")
+    print("The total runtime was: " + str(datetime.now() - p0))
+    print("The ROOT generation portion: " + str(p1 - p0))
+    print("The PATHFINDING portion: " + str(p2 - p1))
+    print("The GRAPHING portion: " + str(p3 - p2))
+    print("The AGGREGATION portion: " + str(datetime.now() - p3))
+    print("*************************************************")
 
     
     
