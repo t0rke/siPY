@@ -13,9 +13,11 @@ import secrets # to chose a color theme for the network graphs
 import pandas as pd # for dataframes
 from collections import defaultdict # for a dict of appendable lists
 from datetime import datetime
+
 # absolute garbage module
 import re
 
+import plotly.express as px
 
 master = 0 # used for emergency pathing stop
 
@@ -91,7 +93,7 @@ def make_append_root_requests(cur, conn, table_name, urls):
         if data:
             append_table(cur, conn, table_name, data)
         else:
-            print('>>> REQUEST FAILED! UNABLE TO PULL DATA FOR URL: ' + url)
+            print('>>> REQUEST FAILED! UNABLE TO FETCH DATA FROM URL: ' + url)
 
 
 # gets a set of up to 20 related artists from a artist recomendation
@@ -116,7 +118,6 @@ def get_related_artists(req_url, parent):
 
 
 def generate_path(cur, conn, table_name, url, name):
-    print (">>> ENTERED GENERATE_PATH")
     # seeds from the first input
     data = get_related_artists(url, name)
 
@@ -158,7 +159,7 @@ def scrape_billboard_artists(url):
 
 # buids a directed graph network using genres and nodes and edges as relations
 # the graph is unweighted for visual comfort but is calculated in a weighted fashion
-def build_graph_network(cur, conn, table_name, theme):
+def build_graph_network(cur, conn, table_name, theme, time_stamp):
      # skips all of the rows with no genre data and begins first step of the pruning process
     cur.execute('SELECT * FROM ' + table_name + ' WHERE genre!=""')
     recomendations = list(cur) # stores the cur pointer in a list
@@ -210,7 +211,7 @@ def build_graph_network(cur, conn, table_name, theme):
     title = 'Graph Network of Genres via SpotifyAPI stemming from ' + table_name[8:].replace('_', ' ')
     plt.axis('off')
     plt.title(title, fontsize=15)
-    plt.savefig('graphs/' + table_name[8:] + '.png', bbox_inches="tight", dpi=500)
+    plt.savefig(time_stamp + '/' + table_name[8:] + '.png', bbox_inches="tight", dpi=500)
     plt.close()
 
 
@@ -245,7 +246,7 @@ def aggregate_data(cur,conn, table_names):
     # gathers all of the table names from PATH and store them into table_names
     graph = defaultdict(list)
     for table in table_names:
-        if table != 'genres' and table != 'root':
+        if table != 'genres' and table != 'root' and table != 'calculations':
             cur.execute('SELECT * FROM ' + table + ' WHERE genre!=""')
             recomendations = list(cur) # stores the cur pointer in a list
             # TURNS THE GENRE tokens in a list of genres per artist
@@ -261,10 +262,38 @@ def aggregate_data(cur,conn, table_names):
 
     # tabulates the frequency of the genres
     frequency = []
+    names = []
+    counts = []
     for genre in graph.keys():
         frequency.append((genre, len(graph[genre])))
+        names.append(genre)
+        counts.append(len(graph[genre]))
 
-    net_plot(frequency)
+    return {'genres': names, 'frequency': counts}
+
+
+def plot(df, enabled = True):
+    if enabled: 
+        plt.figure(figsize=(10,10))
+
+        ax = sns.scatterplot(data=df, x='name', y='calculated', 
+                            hue='name', palette='rainbow', 
+                            size='normalized', sizes=(50,1000), 
+                            alpha=0.7)
+
+        # display legend without `size` attribute
+        h,labs = ax.get_legend_handles_labels()
+        ax.legend(h[1:10], labs[1:10], loc='best', title=None)
+
+        ax.axes.set_title("Normalized Popularity/Followers vs genrescore",fontsize=15)
+        ax.set_xlabel("Followers/Popularity",fontsize=10)
+        ax.set_ylabel("Artist Name",fontsize=10) 
+        sns.despine(ax=ax)
+        plt.xticks(rotation=90, fontsize=5)
+        plt.legend([],[], frameon=False)
+
+        plt.savefig('calculated.png')
+        return
 
 
 def main():
@@ -286,23 +315,23 @@ def main():
     billboard_list = scrape_billboard_artists(billboard_url)
     # Following two lists used to determine what to add to existing root file
     billboard_tables = [('SUBPATH_' + item.replace(' ', '_').replace('+', '').replace('/', '').replace('?', '')
-    .replace('.', '').replace('*', '').replace('\'', '').replace('!', '')) for item in billboard_list]
+    .replace('.', '').replace('*', '').replace('\'', '').replace('!', '')).lower() for item in billboard_list]
     cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
-    existing_tables = [table[0] for table in list(cur.fetchall())]
+    existing_tables = [table[0].lower() for table in list(cur.fetchall())]
     # determines the new items needed
-    difference_list = [re.sub(' +', ' ',item[7:].replace('_', ' ')).lstrip() for item in list(set(billboard_tables) - set(existing_tables))]
+    difference_list = [re.sub(' +', ' ',item[7:].replace('_', ' ')).lstrip()for item in list(set(billboard_tables) - set(existing_tables))]
 
     start = 0
     if 'root' not in existing_tables:
         create_table(cur, conn, 'root')
         new_urls = [build_url(artist, 'name') for artist in  billboard_list] 
         make_append_root_requests(cur, conn, 'root', new_urls)
-    elif difference_list:
+    elif len(difference_list) > 2:
         print ('>>> ' + str(len(difference_list)) + ' DISCREPANCIES DETECTED IN BILLBOARD LIST AND EXISTING TABLE LIST: ' + str(difference_list))
         new_urls = [build_url(artist, 'name') for artist in difference_list] 
         # creates a new root table incase it doesnt exist
         make_append_root_requests(cur, conn, 'root', new_urls)
-        start = len(list(cur.execute('SELECT * FROM root'))) - 2
+        start = len(list(cur.execute('SELECT * FROM root')))
         print('>>> UPDATED THE ROOT TABLE')
         # lst = list(cur.execute('SELECT * FROM root'))
     else:
@@ -321,8 +350,8 @@ def main():
     """
     table_names = []
     row_data = list(cur.execute('SELECT * FROM root'))[start:]
-    print('>>> STARTING PATHFINDING FOR NEW ARTISTS')
-    for row in row_data:
+    print('>>> STARTING PATHFINDING FOR ' + str(len(row_data)) + ' NEW ARTISTS (MAY TAKE UP TO 15 MINUTES)')
+    for row in row_data[42:]:
         ROOT_NAME = row[0]
         ROOT_ID = row[1]
         ROOT_URL = 'https://api.spotify.com/v1/artists/' + ROOT_ID +'/related-artists'
@@ -346,26 +375,62 @@ def main():
     4. The graphs are saved in .graphs/ directory
         
     """
-    # list of graph themes for the build graph options functions
-    themes = ['spring', 'summer', 'autumn', 'winter', 'cool', 'Wistia']
+    # # list of graph themes for the build graph options functions
+    # themes = ['spring', 'summer', 'autumn', 'winter', 'cool', 'Wistia']
 
-    # removing the root table from the list of names
-    # this generates a table per artist and stores the graphs in the graph folder
-    os.mkdir('graphs')
-    for table in table_names:
-        if table != 'genre' and table != 'root':
-            build_graph_network(cur, conn, table, secrets.choice(themes))
-            print(">>>>>> CONTRUCTED GRAPH NETWORK ROOTING FROM " + table)
+    # # removing the root table from the list of names
+    # # this generates a table per artist and stores the graphs in the graph folder
+    # # creates a graphs dictionary if it doesnt exist
+    # time_stamp = 'graphs_' + str(datetime.now())
+    # print(">>> CREATED FOLDER TO STORE DIRECTED GRAPHS NAMED: " + time_stamp)
+    # os.mkdir(time_stamp)
+        
+    # if len(table_names)==0:
+    #     cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
+    #     table_names = [table[0] for table in list(cur.fetchall())]
+    
+    # for table in table_names:
+    #     if table != 'genre' and table != 'root':
+    #         build_graph_network(cur, conn, table, secrets.choice(themes), time_stamp)
+    #         print(">>>>>> CONTRUCTED GRAPH NETWORK ROOTING FROM " + table)
 
     p3 = datetime.now()
     """
-    Part 4: 
+    Part 4: UPDATE
     1. This creates a cumulative graph network of all artist's genres interconnection using the data provided by the SpotifyAPI recomendations feature
     2. The graph shows the weightage of each recomendation and the frequency with which its recomended
     3. The graph is diplayed and stored in the project directory
     4. A runtime summary message is printed
     """
-    aggregate_data(cur, conn, table_names)
+    
+    row_data = list(cur.execute('SELECT * FROM root'))
+
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
+    updated_tables = [table[0] for table in list(cur.fetchall())]
+
+    new_data = []
+    for table in updated_tables:
+        if table != 'genres' and table != 'root' and table != 'calculations':
+            cur.execute('SELECT * FROM ' + table + ' WHERE genre!=""')
+            for row in row_data:
+                # print(row[4])
+                artist, ID, followers, popularity, genres, extra = row
+                genres = secrets.choice(genres.split(','))
+                parent = table[7:].replace('_', ' ')
+                new_data.append((artist, ID, followers, popularity, genres, parent))
+                
+
+    rf = pd.DataFrame(new_data)
+    rf.columns = ['artist', 'ID', 'followers', 'popularity', 'genres', 'parent']
+    rf.sort_values('followers', ascending=False, inplace=True)
+
+    rf["Genres"] = "Genres" # in order to have a single root node
+    fig = px.treemap(rf, path=['Genres', 'genres', 'artist'], values='popularity',
+                    color='followers', hover_data=['ID'],
+                    color_continuous_scale='tempo',
+                    color_continuous_midpoint=40000000)
+    fig.show()
+    
     
     print()
     print("*************************************************")
@@ -375,6 +440,55 @@ def main():
     print("The GRAPHING portion: " + str(p3 - p2))
     print("The AGGREGATION portion: " + str(datetime.now() - p3))
     print("*************************************************")
+
+    """
+    Part5:
+
+    """
+
+    pylt = pd.DataFrame(aggregate_data(cur,conn, updated_tables))
+    pylt.sort_values('frequency', ascending=False, inplace=True)
+
+    root_list = list(cur.execute('SELECT * FROM root'))
+    score_list = []
+    mix_list = []
+    name_list = []
+    for root in root_list:
+        name = root[0]
+        genres = root[4].split(',')
+        followers = root[2]
+        popularity = root[3]
+        mix_list.append(followers / popularity)
+        name_list.append(name)
+        count = 0
+        for item in genres:
+            for index, row in pylt.iterrows():
+                if item == row['genres']:
+                    count += row['frequency']
+        count /= len(genres)
+        score_list.append(count)
+
+    cur.execute('CREATE TABLE IF NOT EXISTS calculations (name TEXT, mix INTEGER, score REAL)')
+    conn.commit()
+
+    for i in range(len(root_list)):
+        cur.execute('INSERT INTO calculations (name, mix, score) VALUES (?,?,?)', (name_list[i], mix_list[i], score_list[i]))
+        conn.commit()
+
+    cur.execute('SELECT * FROM root JOIN calculations ON root.name = calculations.name')
+    df = pd.DataFrame(list(cur))
+    df.columns = ['name', 'ID', 'followers', 'popularity', 'genres', 'parent', 'merge', 'normalized', 'calculated']
+    
+    plot(df, True)
+
+
+    
+
+
+
+
+
+
 
 
 if __name__ == "__main__":
