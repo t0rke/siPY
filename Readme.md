@@ -1,7 +1,5 @@
 # SIPY
 
-This project was created to satisfy the final project requirements for the SI206 class in Winter 2021.
-
 This project utilizes Billboard's top 100 Artist list and pathfinding algorithms to create 100 related artists for each of the artists on the site. By using each root artist to generate a list or related artist, it was possible to see a correlation between the artists that were recommended and the genres that they were known to create in.
 
 ## Modules that you will need
